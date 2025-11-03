@@ -19,13 +19,14 @@ import {
   ThreadPrimitive,
 } from "@assistant-ui/react";
 
-import type { FC } from "react";
+import { type FC, useMemo } from "react";
 import { LazyMotion, MotionConfig, domAnimation } from "motion/react";
 import * as m from "motion/react-m";
 
 import { Button } from "@/components/ui/button";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
+import { ToolGroup } from "@/components/assistant-ui/tool-group";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
   ComposerAddAttachment,
@@ -34,6 +35,172 @@ import {
 } from "@/components/assistant-ui/attachment";
 
 import { cn } from "@/lib/utils";
+import { useAgentContext } from "@/hooks/use-agent-context";
+
+type ThreadSuggestionConfig = {
+  title: string;
+  label: string;
+  action: string;
+};
+
+const DEFAULT_THREAD_SUGGESTIONS: ThreadSuggestionConfig[] = [
+  {
+    title: "Какие задачи решает агент",
+    label: "расскажи о его возможностях",
+    action:
+      "Расскажи коротко, какие задачи может решать этот агент и какие ограничения у него есть",
+  },
+  {
+    title: "Помоги начать работу",
+    label: "предложи план действий",
+    action:
+      "Сформируй список первых шагов, чтобы начать пользоваться помощником",
+  },
+  {
+    title: "Собери вопросы",
+    label: "для менеджера",
+    action:
+      "Составь перечень вопросов, которые стоит задать менеджеру по внедрению",
+  },
+  {
+    title: "Предложи сценарии",
+    label: "для демонстрации",
+    action: "Предложи 3 сценария, которые можно показать клиенту на демо",
+  },
+];
+
+const AGENT_THREAD_SUGGESTIONS: Record<string, ThreadSuggestionConfig[]> = {
+  geoAgent: [
+    {
+      title: "Найди точки продаж",
+      label: "в радиусе 3 км",
+      action:
+        "Подбери 5 точек продаж конкурентов в радиусе 3 км и добавь краткие описания",
+    },
+    {
+      title: "Построй маршрут",
+      label: "с учётом пробок",
+      action:
+        "Сформируй оптимальный маршрут между офисом и тремя выбранными точками с учетом текущей загруженности дорог",
+    },
+    {
+      title: "Сводка погоды",
+      label: "для доставки",
+      action:
+        "Сделай погодную сводку по районам города, где планируется выездной промо-тур",
+    },
+    {
+      title: "Подбери площадки",
+      label: "для встречи",
+      action:
+        "Предложи площадки для бизнес-встреч рядом с нашим офисом и укажи их преимущества",
+    },
+  ],
+  browserAgent: [
+    {
+      title: "Анализ сайта конкурента",
+      label: "ключевые выводы",
+      action:
+        "Проанализируй сайт конкурента example.com и перечисли сильные и слабые стороны",
+    },
+    {
+      title: "Собери инсайты",
+      label: "из новостей",
+      action:
+        "Собери свежие новости о компании XYZ и сделай краткие выводы для продаж",
+    },
+    {
+      title: "Подготовь скриншоты",
+      label: "по новой функции",
+      action:
+        "Сделай скриншоты страницы с новой функцией на сайте example.com и добавь описание",
+    },
+    {
+      title: "Изучи отзывы",
+      label: "для презентации",
+      action:
+        "Проанализируй отзывы клиентов конкурента и выдели точки неудовлетворенности",
+    },
+  ],
+  doctorAgent: [
+    {
+      title: "Подбери исследования",
+      label: "по заболеванию",
+      action:
+        "Найди 3 актуальных исследования PubMed по лечению мигрени и сделай краткие выводы",
+    },
+    {
+      title: "Собери доказательства",
+      label: "для презентации",
+      action:
+        "Сформируй доказательную базу по эффективности терапии X с перечислением PMID",
+    },
+    {
+      title: "Ответь на вопрос пациента",
+      label: "со ссылками",
+      action:
+        "Составь краткую консультацию по симптомам бронхита с указанием источников PubMed",
+    },
+    {
+      title: "Сформируй FAQ",
+      label: "для врачей",
+      action:
+        "Собери частые вопросы врачей по препарату Y и подготовь ответы со ссылками на исследования",
+    },
+  ],
+  n8nAgent: [
+    {
+      title: "Спроектируй воркфлоу",
+      label: "для лидогенерации",
+      action:
+        "Предложи структуру n8n-воркфлоу, который собирает лиды из формы и отправляет уведомления в Slack",
+    },
+    {
+      title: "Проверь сценарий",
+      label: "на ошибки",
+      action:
+        "Проведи ревью текущего n8n сценария с вебхуком и укажи потенциальные проблемы",
+    },
+    {
+      title: "Настрой интеграцию",
+      label: "с CRM",
+      action:
+        "Опиши, как связать n8n с нашей CRM, чтобы автоматически обновлять статусы сделок",
+    },
+    {
+      title: "Подготовь чек-лист",
+      label: "по деплою",
+      action:
+        "Составь чек-лист для деплоя нового n8n сценария на продуктив с пунктами валидации",
+    },
+  ],
+  salesAgent: [
+    {
+      title: "Диагностика боли клиента",
+      label: "список вопросов",
+      action:
+        "Сформулируй 6 вопросов, которые помогут выявить потребности клиента для SaaS-продукта",
+    },
+    {
+      title: "Скрипт cold call",
+      label: "с отработкой возражений",
+      action:
+        "Напиши скрипт звонка для холодного лида, включи блоки возражений и ответы",
+    },
+    {
+      title: "Подготовь follow-up",
+      label: "после демо",
+      action:
+        "Составь follow-up письмо после демо, добавь краткое напоминание о ценности и CTA",
+    },
+    {
+      title: "Квалификация лида",
+      label: "по BANT",
+      action:
+        "Оцени лида по модели BANT на основе полученной информации и предложи дальнейшие шаги",
+    },
+  ],
+};
 
 export const Thread: FC = () => {
   return (
@@ -87,15 +254,15 @@ const ThreadScrollToBottom: FC = () => {
 const ThreadWelcome: FC = () => {
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-[var(--thread-max-width)] flex-grow flex-col">
-      <div className="aui-thread-welcome-center flex w-full flex-grow flex-col items-center justify-center">
-        <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-8">
+      <div className="aui-thread-welcome-center mt-40 mb-30 flex w-full flex-grow flex-col items-center justify-center">
+        <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <m.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
             className="aui-thread-welcome-message-motion-1 text-2xl font-semibold"
           >
-            Hello there!
+            Привет!
           </m.div>
           <m.div
             initial={{ opacity: 0, y: 10 }}
@@ -104,7 +271,7 @@ const ThreadWelcome: FC = () => {
             transition={{ delay: 0.1 }}
             className="aui-thread-welcome-message-motion-2 text-2xl text-muted-foreground/65"
           >
-            How can I help you today?
+            Давайте начнем с демонстрации возможностей агента.
           </m.div>
         </div>
       </div>
@@ -114,30 +281,15 @@ const ThreadWelcome: FC = () => {
 };
 
 const ThreadSuggestions: FC = () => {
+  const { agentId } = useAgentContext();
+  const suggestions = useMemo(
+    () => AGENT_THREAD_SUGGESTIONS[agentId] ?? DEFAULT_THREAD_SUGGESTIONS,
+    [agentId],
+  );
+
   return (
     <div className="aui-thread-welcome-suggestions grid w-full gap-2 pb-4 @md:grid-cols-2">
-      {[
-        {
-          title: "What's the weather",
-          label: "in San Francisco?",
-          action: "What's the weather in San Francisco?",
-        },
-        {
-          title: "Explain React hooks",
-          label: "like useState and useEffect",
-          action: "Explain React hooks like useState and useEffect",
-        },
-        {
-          title: "Write a SQL query",
-          label: "to find top customers",
-          action: "Write a SQL query to find top customers",
-        },
-        {
-          title: "Create a meal plan",
-          label: "for healthy weight loss",
-          action: "Create a meal plan for healthy weight loss",
-        },
-      ].map((suggestedAction, index) => (
+      {suggestions.map((suggestedAction, index) => (
         <m.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -177,7 +329,7 @@ const Composer: FC = () => {
       <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col rounded-3xl border border-border bg-muted px-1 pt-2 shadow-[0_9px_9px_0px_rgba(0,0,0,0.01),0_2px_5px_0px_rgba(0,0,0,0.06)] dark:border-muted-foreground/15">
         <ComposerAttachments />
         <ComposerPrimitive.Input
-          placeholder="Send a message..."
+          placeholder="Написать сообщение..."
           className="aui-composer-input mb-1 max-h-32 min-h-16 w-full resize-none bg-transparent px-3.5 pt-1.5 pb-3 text-base outline-none placeholder:text-muted-foreground focus:outline-primary"
           rows={1}
           autoFocus
@@ -248,6 +400,7 @@ const AssistantMessage: FC = () => {
           <MessagePrimitive.Parts
             components={{
               Text: MarkdownText,
+              ToolGroup,
               tools: { Fallback: ToolFallback },
             }}
           />

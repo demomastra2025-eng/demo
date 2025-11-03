@@ -12,6 +12,8 @@ import remarkGfm from "remark-gfm";
 import { type FC, memo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
+import { MermaidDiagram } from "@/components/assistant-ui/mermaid-diagram";
+import { SyntaxHighlighter } from "@/components/assistant-ui/shiki-highlighter";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +23,11 @@ const MarkdownTextImpl = () => {
       remarkPlugins={[remarkGfm]}
       className="aui-md"
       components={defaultComponents}
+      componentsByLanguage={{
+        mermaid: {
+          SyntaxHighlighter: MermaidDiagram,
+        },
+      }}
     />
   );
 };
@@ -67,6 +74,7 @@ const useCopyToClipboard = ({
 };
 
 const defaultComponents = memoizeMarkdownComponents({
+  SyntaxHighlighter: SyntaxHighlighter,
   h1: ({ className, ...props }) => (
     <h1
       className={cn(

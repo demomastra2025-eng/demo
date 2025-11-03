@@ -1,6 +1,11 @@
 "use client";
 
-import { ComponentPropsWithRef, forwardRef } from "react";
+import {
+  ComponentPropsWithRef,
+  forwardRef,
+  useEffect,
+  useState,
+} from "react";
 import { Slottable } from "@radix-ui/react-slot";
 
 import {
@@ -20,19 +25,33 @@ export const TooltipIconButton = forwardRef<
   HTMLButtonElement,
   TooltipIconButtonProps
 >(({ children, tooltip, side = "bottom", className, ...rest }, ref) => {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon"
+      {...rest}
+      className={cn("aui-button-icon size-6 p-1", className)}
+      ref={ref}
+    >
+      <Slottable>{children}</Slottable>
+      <span className="aui-sr-only sr-only">{tooltip}</span>
+    </Button>
+  );
+
+  if (!isMounted) {
+    return button;
+  }
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          {...rest}
-          className={cn("aui-button-icon size-6 p-1", className)}
-          ref={ref}
-        >
-          <Slottable>{children}</Slottable>
-          <span className="aui-sr-only sr-only">{tooltip}</span>
-        </Button>
+        {button}
       </TooltipTrigger>
       <TooltipContent side={side}>{tooltip}</TooltipContent>
     </Tooltip>

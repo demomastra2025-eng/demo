@@ -1,5 +1,7 @@
+"use client";
+
 import * as React from "react";
-import { Github, MessagesSquare } from "lucide-react";
+import { Github } from "lucide-react";
 import Link from "next/link";
 import {
   Sidebar,
@@ -12,10 +14,22 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { ThreadList } from "@/components/assistant-ui/thread-list";
+import { AgentSelector } from "@/components/assistant-ui/agent-selector";
+import { useAgentContext } from "@/hooks/use-agent-context";
 
 export function ThreadListSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
+  const { agents } = useAgentContext();
+
+  const workspaceAgentIds = React.useMemo(
+    () =>
+      agents
+        .filter((agent) => agent.id !== "salesAgent")
+        .map((agent) => agent.id),
+    [agents],
+  );
+
   return (
     <Sidebar {...props}>
       <SidebarHeader className="aui-sidebar-header mb-2 border-b">
@@ -28,12 +42,10 @@ export function ThreadListSidebar({
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <div className="aui-sidebar-header-icon-wrapper flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <MessagesSquare className="aui-sidebar-header-icon size-4" />
-                  </div>
+                  
                   <div className="aui-sidebar-header-heading mr-6 flex flex-col gap-0.5 leading-none">
                     <span className="aui-sidebar-header-title font-semibold">
-                      assistant-ui
+                     
                     </span>
                   </div>
                 </Link>
@@ -42,7 +54,14 @@ export function ThreadListSidebar({
           </SidebarMenu>
         </div>
       </SidebarHeader>
-      <SidebarContent className="aui-sidebar-content px-2">
+      <SidebarContent className="aui-sidebar-content space-y-4 px-2 py-4">
+        <AgentSelector
+          layout="stacked"
+          showDescription
+          variant="select"
+          agentIds={workspaceAgentIds}
+          className="shadow-none"
+        />
         <ThreadList />
       </SidebarContent>
       <SidebarRail />
@@ -51,7 +70,7 @@ export function ThreadListSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link
-                href="https://github.com/assistant-ui/assistant-ui"
+                href="https://t.me/khamzauly"
                 target="_blank"
               >
                 <div className="aui-sidebar-footer-icon-wrapper flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
@@ -59,9 +78,9 @@ export function ThreadListSidebar({
                 </div>
                 <div className="aui-sidebar-footer-heading flex flex-col gap-0.5 leading-none">
                   <span className="aui-sidebar-footer-title font-semibold">
-                    GitHub
+                    Контакты менеджера
                   </span>
-                  <span>View Source</span>
+                  <span>+7 (707) 281-70-60</span>
                 </div>
               </Link>
             </SidebarMenuButton>
