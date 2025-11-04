@@ -26,7 +26,8 @@ export const n8nMcp = new MCPClient({
     // Namespaced as "n8n"; tools will appear with this namespace in getToolsets()
     n8n: {
       command: 'npx',
-      args: ['n8n-mcp'],
+      // Pin n8n-mcp to a specific version to avoid implicit runtime installs.
+      args: ['n8n-mcp@2.22.9'],
       env,
       timeout: Number(process.env.N8N_MCP_TIMEOUT ?? 60000),
     },

@@ -30,6 +30,8 @@
     "@mastra/libsql": "^0.16.1",
     "@mastra/loggers": "^0.10.18",
     "@mastra/mcp": "^0.14.1",
+  "n8n-mcp": "2.22.9",
+  "@playwright/mcp": "0.0.45",
     "@mastra/memory": "^0.15.10",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.15",

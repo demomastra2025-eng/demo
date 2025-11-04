@@ -21,7 +21,8 @@ export const playwrightMcp = new MCPClient({
   servers: {
     browser: {
       command: 'npx',
-      args: ['@playwright/mcp@latest'],
+      // Pin playwright MCP to a tested release to avoid runtime network installs.
+      args: ['@playwright/mcp@0.0.45'],
       env,
       timeout: Number(process.env.PLAYWRIGHT_MCP_TIMEOUT ?? 60000),
     },
