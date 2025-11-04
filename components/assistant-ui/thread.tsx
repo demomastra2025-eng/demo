@@ -15,13 +15,16 @@ import {
   BranchPickerPrimitive,
   ComposerPrimitive,
   ErrorPrimitive,
+  MessagePartPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
   useAssistantApi,
   useAssistantState,
+  useMessagePart,
+  useMessagePartReasoning,
 } from "@assistant-ui/react";
 
-import { type FC, useCallback, useEffect, useMemo } from "react";
+import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { LazyMotion, MotionConfig, domAnimation } from "motion/react";
 import * as m from "motion/react-m";
 
@@ -36,6 +39,7 @@ import {
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useAgentContext } from "@/hooks/use-agent-context";
 
@@ -275,6 +279,14 @@ export const Thread: FC = () => {
   );
 };
 
+const MESSAGE_PART_COMPONENTS = {
+  Text: AssistantTextPart,
+  Reasoning: ReasoningMessagePart,
+  ToolGroup,
+  Unstable_Audio: AudioMessagePart,
+  tools: { Fallback: ToolFallback },
+};
+
 const ThreadScrollToBottom: FC = () => {
   return (
     <ThreadPrimitive.ScrollToBottom asChild>
@@ -436,11 +448,7 @@ const AssistantMessage: FC = () => {
       >
         <div className="aui-assistant-message-content mx-2 leading-7 break-words text-foreground">
           <MessagePrimitive.Parts
-            components={{
-              Text: MarkdownText,
-              ToolGroup,
-              tools: { Fallback: ToolFallback },
-            }}
+            components={MESSAGE_PART_COMPONENTS}
           />
           <MessageError />
         </div>
@@ -492,7 +500,7 @@ const UserMessage: FC = () => {
 
         <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
           <div className="aui-user-message-content rounded-3xl bg-muted px-5 py-2.5 break-words text-foreground">
-            <MessagePrimitive.Parts />
+            <MessagePrimitive.Parts components={MESSAGE_PART_COMPONENTS} />
           </div>
           <div className="aui-user-action-bar-wrapper absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 pr-2">
             <UserActionBar />
@@ -576,3 +584,124 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
     </BranchPickerPrimitive.Root>
   );
 };
+
+function AssistantTextPart() {
+  return (
+    <>
+      <MessagePartPrimitive.InProgress>
+        <MessagePartLoader />
+      </MessagePartPrimitive.InProgress>
+      <MarkdownText />
+    </>
+  );
+}
+
+function ReasoningMessagePart() {
+  useMessagePartReasoning();
+
+  return (
+    <details className="aui-reasoning-part group mt-3 space-y-2 rounded-xl border border-border/60 bg-muted/50 p-3 text-sm">
+      <summary className="aui-reasoning-summary cursor-pointer list-none font-medium text-muted-foreground transition-colors hover:text-foreground">
+        Ход рассуждений
+      </summary>
+      <MessagePartPrimitive.InProgress>
+        <MessagePartLoader label="Модель продолжает рассуждать..." />
+      </MessagePartPrimitive.InProgress>
+      <div className="aui-reasoning-content prose prose-sm max-w-none text-muted-foreground group-open:text-foreground dark:prose-invert">
+        <MarkdownText />
+      </div>
+    </details>
+  );
+}
+
+function AudioMessagePart() {
+  const part = useMessagePart();
+  // Hooks must be called unconditionally — call state/effects before any early returns.
+  const [audioUrl, setAudioUrl] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!part || part.type !== "audio") {
+      setAudioUrl(undefined);
+      return;
+    }
+
+    const { audio } = part;
+
+    if (!audio) {
+      setAudioUrl(undefined);
+      return;
+    }
+
+    const blobUrl = createAudioObjectUrl(audio.data, audio.format);
+    setAudioUrl(blobUrl);
+
+    return () => {
+      URL.revokeObjectURL(blobUrl);
+    };
+  }, [part]);
+
+  if (!part || part.type !== "audio") {
+    return null;
+  }
+
+  return (
+    <div className="aui-audio-part mt-3 flex w-full flex-col gap-2 rounded-xl border border-border/60 bg-muted/60 p-3">
+      <span className="text-xs font-medium uppercase text-muted-foreground">
+        Аудиоответ
+      </span>
+
+      <MessagePartPrimitive.InProgress>
+        <MessagePartLoader label="Генерируется аудио..." />
+      </MessagePartPrimitive.InProgress>
+
+      {audioUrl ? (
+        <audio
+          controls
+          className="aui-audio-player w-full"
+          src={audioUrl}
+          preload="metadata"
+        />
+      ) : (
+        <MessagePartLoader label="Подготавливаем аудио..." />
+      )}
+    </div>
+  );
+}
+
+function MessagePartLoader({ label }: { label?: string }) {
+  return (
+    <div className="aui-message-part-loader flex flex-col gap-2">
+      <Skeleton className="h-3.5 w-3/4 rounded-full" />
+      <Skeleton className="h-3.5 w-1/2 rounded-full" />
+      {label ? (
+        <span className="text-xs text-muted-foreground/80">{label}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function createAudioObjectUrl(data: string, format: "mp3" | "wav") {
+  const buffer = decodeBase64ToArrayBuffer(data);
+  const blob = new Blob([buffer], { type: `audio/${format}` });
+  return URL.createObjectURL(blob);
+}
+
+function decodeBase64ToArrayBuffer(input: string): ArrayBuffer {
+  if (typeof window === "undefined") {
+    if (typeof Buffer !== "undefined") {
+      const buffer = Buffer.from(input, "base64");
+      return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+    }
+    throw new Error("Base64 decoding not supported in this environment");
+  }
+
+  const binaryString = window.atob(input);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+
+  for (let i = 0; i < len; i += 1) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  return bytes.buffer;
+}

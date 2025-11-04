@@ -1,4 +1,6 @@
-import { MCPClient } from '@mastra/mcp';
+import { MCPClient } from "@mastra/mcp";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Centralized MCP client for the n8n-mcp server.
 // Reads configuration from environment variables.
@@ -10,6 +12,9 @@ import { MCPClient } from '@mastra/mcp';
 // Optional (for managing a remote n8n instance via API):
 //   N8N_API_URL, N8N_API_KEY
 
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const n8nPatchPath = path.join(currentDir, "n8n-mcp-healthcheck-patch.cjs");
+
 const env: Record<string, string> = {};
 if (process.env.MCP_MODE) env.MCP_MODE = process.env.MCP_MODE!;
 else env.MCP_MODE = 'stdio';
@@ -20,13 +25,23 @@ env.DISABLE_CONSOLE_OUTPUT = process.env.DISABLE_CONSOLE_OUTPUT || 'true';
 if (process.env.N8N_API_URL) env.N8N_API_URL = process.env.N8N_API_URL!;
 if (process.env.N8N_API_KEY) env.N8N_API_KEY = process.env.N8N_API_KEY!;
 
+const mergedNodeOptions = [
+  process.env.NODE_OPTIONS,
+  `--require ${n8nPatchPath}`,
+]
+  .filter((value): value is string => typeof value === "string" && value.length > 0)
+  .join(" ");
+
+if (mergedNodeOptions.length > 0) {
+  env.NODE_OPTIONS = mergedNodeOptions;
+}
+
 export const n8nMcp = new MCPClient({
   id: 'n8n-mcp',
   servers: {
     // Namespaced as "n8n"; tools will appear with this namespace in getToolsets()
     n8n: {
       command: 'npx',
-      // Pin n8n-mcp to a specific version to avoid implicit runtime installs.
       args: ['n8n-mcp@2.22.9'],
       env,
       timeout: Number(process.env.N8N_MCP_TIMEOUT ?? 60000),
@@ -51,4 +66,3 @@ export async function getN8nToolsets() {
 export async function disconnectN8nMcp(): Promise<void> {
   await n8nMcp.disconnect();
 }
-

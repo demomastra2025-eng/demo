@@ -15,7 +15,18 @@ async function loadN8nTools() {
   }
 }
 
-const n8nTools = await loadN8nTools();
+const isN8nMcpEnabled =
+  process.env.N8N_MCP_ENABLED?.toLowerCase() !== "false";
+
+const n8nTools = isN8nMcpEnabled
+  ? await loadN8nTools()
+  : [];
+
+if (!isN8nMcpEnabled) {
+  console.info(
+    "[n8n-agent] N8N_MCP_ENABLED is not true; starting without MCP tools.",
+  );
+}
 
 export const n8nAgent = new Agent({
   name: "n8n Agent",
