@@ -2,7 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 
-const pipelineStageEnum = ["new", "triage", "scheduled", "completed"] as const;
+const pipelineStageEnum = ["new", "confirmation", "confirmed", "completed"] as const;
 export type AppointmentStage = (typeof pipelineStageEnum)[number];
 
 const ensureId = () => {
@@ -16,7 +16,7 @@ const ensureId = () => {
 export const createAppointmentTool = createTool({
   id: "create-appointment",
   description:
-    "Создаёт новую заявку пациента: укажи ФИО, врача/отделение, тип приема, контакт и статус.",
+    "Создаёт новую заявку пациента: укажи ФИО, врача/отделение, тип приема, контакт и статус (Новые обращения → Подтвердить приём → Подтвержден → Завершён).",
   inputSchema: z.object({
     patientName: z
       .string()
@@ -39,7 +39,7 @@ export const createAppointmentTool = createTool({
     note: z
       .string()
       .optional()
-      .describe("Пожелания пациента, противопоказания или задачи врача."),
+      .describe("Пожелания пациента, подготовка к процедуре или инструкции врачу."),
   }),
   outputSchema: z.object({
     action: z.literal("create"),
@@ -74,7 +74,7 @@ export const createAppointmentTool = createTool({
 export const updateAppointmentStageTool = createTool({
   id: "update-appointment-stage",
   description:
-    "Меняет статус заявки или приема пациента. Используй, когда пациент дошёл до следующего шага.",
+    "Переносит карточку между этапами воронки (например, из «Подтвердить приём» в «Подтвержден») и обновляет данные визита.",
   inputSchema: z.object({
     id: z
       .string()
@@ -87,7 +87,7 @@ export const updateAppointmentStageTool = createTool({
     note: z
       .string()
       .optional()
-      .describe("Добавь итог звонка или инструкции для ресепшена."),
+      .describe("Добавь итог звонка, подтверждение или инструкции для ресепшена."),
   }),
   outputSchema: z.object({
     action: z.literal("move"),

@@ -17,9 +17,11 @@ import {
   ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAssistantApi,
+  useAssistantState,
 } from "@assistant-ui/react";
 
-import { type FC, useMemo } from "react";
+import { type FC, useCallback, useEffect, useMemo } from "react";
 import { LazyMotion, MotionConfig, domAnimation } from "motion/react";
 import * as m from "motion/react-m";
 
@@ -41,6 +43,41 @@ type ThreadSuggestionConfig = {
   title: string;
   label: string;
   action: string;
+};
+
+const EnsureThreadComposerEditing: FC = () => {
+  const api = useAssistantApi();
+  const isEditing = useAssistantState((state) => state.composer.isEditing);
+  const composerType = useAssistantState((state) => state.composer.type);
+
+  const ensureEditing = useCallback(() => {
+    const composerApi = api.composer();
+    const state = composerApi.getState();
+    if (state.type !== "thread" || state.isEditing) {
+      return;
+    }
+
+    try {
+      composerApi.beginEdit();
+    } catch (error) {
+      console.warn("[EnsureThreadComposerEditing] Failed to begin edit", error);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    if (composerType === "thread" && !isEditing) {
+      ensureEditing();
+    }
+  }, [composerType, ensureEditing, isEditing]);
+
+  useEffect(() => {
+    const unsubscribe = api.on("thread.initialize", () => {
+      ensureEditing();
+    });
+    return unsubscribe;
+  }, [api, ensureEditing]);
+
+  return null;
 };
 
 const DEFAULT_THREAD_SUGGESTIONS: ThreadSuggestionConfig[] = [
@@ -206,6 +243,7 @@ export const Thread: FC = () => {
   return (
     <LazyMotion features={domAnimation}>
       <MotionConfig reducedMotion="user">
+        <EnsureThreadComposerEditing />
         <ThreadPrimitive.Root
           className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
           style={{

@@ -16,11 +16,6 @@ import {
 } from "./scorers/weather-scorer";
 import { weatherWorkflow } from "./workflows/weather-workflow";
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __mastra: Mastra | undefined;
-}
-
 const createMastraInstance = () =>
   new Mastra({
     workflows: { weatherWorkflow },
@@ -55,7 +50,15 @@ const createMastraInstance = () =>
     },
   });
 
-const mastraInstance = globalThis.__mastra ?? createMastraInstance();
+type AppMastra = ReturnType<typeof createMastraInstance>;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __mastra: AppMastra | undefined;
+}
+
+const mastraInstance: AppMastra =
+  globalThis.__mastra ?? createMastraInstance();
 
 if (process.env.NODE_ENV !== "production") {
   globalThis.__mastra = mastraInstance;

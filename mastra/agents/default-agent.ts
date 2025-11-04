@@ -17,7 +17,7 @@ Guiding principles:
 - Never claim to perform real-world actions; instead, explain how the user can execute the steps themselves.
 
 Always keep the tone professional and collaborative.`,
-  model: "openai/gpt-4o-mini",
+  model: "openai/gpt-5-mini",
   memory: new Memory({
     storage: new LibSQLStore({
       url: "file:../mastra.db",

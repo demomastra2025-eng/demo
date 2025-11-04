@@ -18,12 +18,13 @@ import {
 } from "@/components/kibo-ui/kanban";
 import {
   makeAssistantVisible,
+  useAssistantApi,
   useAssistantInstructions,
   useThread,
 } from "@assistant-ui/react";
 import { cn } from "@/lib/utils";
 
-type AppointmentStage = "new" | "triage" | "scheduled" | "completed";
+type AppointmentStage = "new" | "confirmation" | "confirmed" | "completed";
 
 type AppointmentCard = {
   id: string;
@@ -54,14 +55,14 @@ const COLUMNS: ColumnDefinition[] = [
     hint: "Поступил запрос, требуется первичный контакт",
   },
   {
-    id: "triage",
-    name: "Уточняем детали",
-    hint: "Подтверждаем жалобу, противопоказания и подготовку",
+    id: "confirmation",
+    name: "Подтвердить приём",
+    hint: "Отправляем пациенту уведомление и ждём подтверждение визита",
   },
   {
-    id: "scheduled",
-    name: "Визит назначен",
-    hint: "Подобрано время, напоминаем пациенту о подготовке",
+    id: "confirmed",
+    name: "Подтвержден",
+    hint: "Пациент подтвердил визит — контролируем подготовку и напоминания",
   },
   {
     id: "completed",
@@ -95,7 +96,7 @@ const INITIAL_ITEMS: AppointmentCard[] = [
     patient: "Ермек Байжанов",
     doctor: "Невролог • д-р Курманов",
     service: "МРТ шейного отдела",
-    column: "triage",
+    column: "confirmation",
     contact: "+7 702 555-44-11",
     note: "Уточнить наличие металлоконструкций, ждёт звонок вечером",
   },
@@ -105,7 +106,7 @@ const INITIAL_ITEMS: AppointmentCard[] = [
     patient: "Анна Сидорова",
     doctor: "Педиатр • д-р Алиева",
     service: "Детская вакцинация",
-    column: "scheduled",
+    column: "confirmed",
     contact: "+7 701 908-33-22",
     slot: "12.02, 10:30",
     note: "Отправить список анализов за день до визита",
@@ -116,7 +117,7 @@ const INITIAL_ITEMS: AppointmentCard[] = [
     patient: "Руслан Ким",
     doctor: "Стоматолог • д-р Исабекова",
     service: "Хирургическое удаление зуба",
-    column: "scheduled",
+    column: "confirmed",
     contact: "ruslan.kim@example.com",
     slot: "13.02, 16:00",
     note: "Нужно напомнить про отмену антикоагулянтов за 24 часа",
@@ -179,6 +180,7 @@ export const SalesKanban: FC<SalesKanbanProps> = ({ className }) => {
   const processedToolCalls = useRef<Set<string>>(new Set());
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const threadMessages = useThread((state) => state.messages);
+  const assistantApi = useAssistantApi();
 
   const markTouched = useCallback((id: string | null) => {
     setLastTouchedId(id);
@@ -288,6 +290,93 @@ export const SalesKanban: FC<SalesKanbanProps> = ({ className }) => {
     });
   }, [threadMessages, markTouched]);
 
+  const sendInstructionToAssistant = useCallback(
+    (text: string) => {
+      const trySend = () => {
+        const threadApi = assistantApi.thread();
+        const state = threadApi.getState();
+        if (state.isDisabled) {
+          return false;
+        }
+
+        threadApi.append({
+          role: "user",
+          content: [{ type: "text", text }],
+          startRun: true,
+        });
+        return true;
+      };
+
+      if (trySend()) {
+        return;
+      }
+
+      const unsubscribe = assistantApi.on("thread.initialize", ({ threadId }) => {
+        const mainThreadId = assistantApi.threads().getState().mainThreadId;
+        if (threadId !== mainThreadId) {
+          return;
+        }
+
+        if (trySend()) {
+          unsubscribe();
+        }
+      });
+    },
+    [assistantApi],
+  );
+
+  const handleDataChange = useCallback(
+    (data: AppointmentCard[]) => {
+      const describeCard = (card: AppointmentCard) =>
+        [
+          `Пациент: ${card.name} (ID ${card.id})`,
+          `Врач/услуга: ${card.doctor}`,
+          card.slot ? `Предложенное время: ${card.slot}` : null,
+          card.contact ? `Контакт: ${card.contact}` : null,
+          card.note ? `Комментарий: ${card.note}` : null,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join(" • ");
+
+      const movedCardIds = new Set<string>();
+      const movedToConfirmation: AppointmentCard[] = [];
+
+      setItems((current) => {
+        const currentById = new Map(current.map((card) => [card.id, card]));
+        data.forEach((card) => {
+          const previous = currentById.get(card.id);
+          if (previous && previous.column !== card.column) {
+            movedCardIds.add(card.id);
+            if (card.column === "confirmation") {
+              movedToConfirmation.push(card);
+            }
+          }
+        });
+        return data;
+      });
+
+      movedCardIds.forEach((id) => markTouched(id));
+
+      if (movedToConfirmation.length > 0) {
+        const message =
+          movedToConfirmation.length === 1
+            ? [
+                `Карточку перенесли в колонку «Подтвердить приём»: ${describeCard(movedToConfirmation[0]!)}.`,
+                "Напиши оператору готовый текст уведомления для пациента от имени клиники. Включи приветствие, дату и время визита, врача/услугу, инструкции по подготовке и контакт для обратной связи. Попроси пациента подтвердить визит.",
+                "После текста уведомления перечисли отдельным списком действия для оператора: что делать при подтверждении, при отказе или отсутствии ответа. Если не хватает данных, укажи что нужно уточнить.",
+              ].join("\n")
+            : [
+                "Несколько карточек перенесены в колонку «Подтвердить приём». Для каждой подготовь ответ:",
+                ...movedToConfirmation.map((card) => `- ${describeCard(card)}`),
+                "Для каждой карточки в одном ответе:\n• сначала приведи текст уведомления для пациента;\n• затем перечисли действия для оператора после отправки (подтверждение, повторный контакт, возврат в «Новые обращения» при отказе).\nЕсли данных не хватает — напомни, что нужно уточнить.",
+              ].join("\n\n");
+
+        sendInstructionToAssistant(message);
+      }
+    },
+    [markTouched, sendInstructionToAssistant],
+  );
+
   const columnSummaries = useMemo(() => {
     return COLUMNS.map((column) => ({
       ...column,
@@ -324,11 +413,19 @@ export const SalesKanban: FC<SalesKanbanProps> = ({ className }) => {
       .map((column) => `- ${column.name}: ${column.count} заявок`)
       .join("\n");
 
+    const waitingForConfirmation = items
+      .filter((card) => card.column === "confirmation")
+      .map(
+        (card) =>
+          `- ${card.id} • ${card.name}${card.slot ? ` • предложенное время ${card.slot}` : ""}${card.contact ? ` • контакт ${card.contact}` : ""}${card.note ? ` • заметка: ${card.note}` : ""}`,
+      )
+      .join("\n");
+
     const appointments = items
       .slice(0, 12)
       .map(
         (card) =>
-          `${card.id} • ${card.name} • этап ${card.column} • врач ${card.doctor}${card.slot ? ` • время ${card.slot}` : ""}${card.contact ? ` • контакт ${card.contact}` : ""}${card.note ? ` • заметка: ${card.note}` : ""}`,
+          `${card.id} • ${card.name} • этап ${summaryByColumnId[card.column]?.name ?? card.column} • врач ${card.doctor}${card.slot ? ` • время ${card.slot}` : ""}${card.contact ? ` • контакт ${card.contact}` : ""}${card.note ? ` • заметка: ${card.note}` : ""}`,
       )
       .join("\n");
 
@@ -338,10 +435,16 @@ export const SalesKanban: FC<SalesKanbanProps> = ({ className }) => {
       "После каждого действия сообщай оператору, что именно изменилось и какой следующий шаг.",
       "Сводка по текущим этапам:",
       columnSummaryText,
+      waitingForConfirmation
+        ? [
+            "Карточки в «Подтвердить приём» — нужно связаться с пациентом и получить ответ:",
+            waitingForConfirmation,
+          ].join("\n")
+        : "Колонка «Подтвердить приём» пустая — напоминания не требуются, но подчеркни это в ответе при необходимости.",
       "Активные карточки (до 12 шт.):",
       appointments.length > 0 ? appointments : "- пока без заявок",
     ].join("\n");
-  }, [columnSummaries, items]);
+  }, [columnSummaries, items, summaryByColumnId]);
 
   useAssistantInstructions(instructionSnapshot);
 
@@ -371,7 +474,7 @@ export const SalesKanban: FC<SalesKanbanProps> = ({ className }) => {
             <div className="rounded-xl bg-primary/10 px-3 py-2 text-xs text-primary">
               Обновлена карточка{" "}
               <span className="font-semibold">{lastTouchedItem.name}</span>{" "}
-              ({lastTouchedItem.column})
+              ({summaryByColumnId[lastTouchedItem.column]?.name ?? lastTouchedItem.column})
             </div>
           ) : null}
         </div>
@@ -393,7 +496,7 @@ export const SalesKanban: FC<SalesKanbanProps> = ({ className }) => {
       <KanbanProvider<AppointmentCard, ColumnDefinition>
         columns={COLUMNS}
         data={items}
-        onDataChange={(data) => setItems(data)}
+        onDataChange={handleDataChange}
         className="auto-cols-[minmax(280px,1fr)] h-full gap-5"
       >
         {(column) => {

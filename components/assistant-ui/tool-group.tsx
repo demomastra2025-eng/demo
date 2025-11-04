@@ -1,6 +1,8 @@
 import type { FC, PropsWithChildren } from "react";
+import { useMemo } from "react";
 
 import { cn } from "@/lib/utils";
+import { useMessage } from "@assistant-ui/react";
 
 type ToolGroupProps = PropsWithChildren<{
   startIndex: number;
@@ -16,11 +18,33 @@ export const ToolGroup: FC<ToolGroupProps> = ({
   endIndex,
   children,
 }) => {
-  const toolCount = endIndex - startIndex + 1;
+  const messageContent = useMessage((state) => state.content);
+  const toolLabels = useMemo(() => {
+    if (!messageContent || messageContent.length === 0) {
+      return [] as string[];
+    }
+
+    const tools: string[] = [];
+
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      const part = messageContent[index];
+      if (!part || part.type !== "tool-call") continue;
+      if (typeof part.toolName === "string" && part.toolName.length > 0) {
+        tools.push(part.toolName);
+      }
+    }
+
+    return tools;
+  }, [messageContent, startIndex, endIndex]);
+
   const label =
-    toolCount === 1
-      ? `Tool call #${startIndex + 1}`
-      : `Tool calls #${startIndex + 1}–${endIndex + 1}`;
+    toolLabels.length === 1
+      ? `Tool: ${toolLabels[0]}`
+      : toolLabels.length > 1
+        ? `Tools: ${toolLabels.join(", ")}`
+        : `Tools`;
+  const toolCount =
+    toolLabels.length > 0 ? toolLabels.length : endIndex - startIndex + 1;
 
   return (
     <details
@@ -32,7 +56,7 @@ export const ToolGroup: FC<ToolGroupProps> = ({
       <summary className="aui-tool-group-summary flex cursor-pointer items-center justify-between gap-2 px-4 py-2 text-sm font-medium text-foreground outline-none">
         <span>{label}</span>
         <span className="aui-tool-group-count text-xs text-muted-foreground">
-          {toolCount} {toolCount === 1 ? "entry" : "entries"}
+          {toolCount} {toolCount === 1 ? "вызов" : "вызова"}
         </span>
       </summary>
       <div className="aui-tool-group-content space-y-3 border-t border-border bg-background/80 px-4 py-3">
@@ -41,4 +65,3 @@ export const ToolGroup: FC<ToolGroupProps> = ({
     </details>
   );
 };
-
